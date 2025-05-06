@@ -1,13 +1,9 @@
-const express = require('express');
-const IndexController = require('../controllers/index').IndexController;
+const petRouters = require("../pets/routers");
+const clinicRouters = require("../clinics/routers");
 
-function setRoutes(app) {
-    const router = express.Router();
-    const indexController = new IndexController();
+const routers = (app) => {
+  app.use(`${process.env.API_VESION}/pets`, petRouters);
+  app.use(`${process.env.API_VESION}/clinics`, clinicRouters);
+};
 
-    router.get('/', indexController.getIndex.bind(indexController));
-
-    app.use('/', router);
-}
-
-module.exports = setRoutes;
+module.exports = { routers };

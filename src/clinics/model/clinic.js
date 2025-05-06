@@ -6,10 +6,6 @@ const cLinicSchema = new mongoose.Schema(
       type: String,
       require: true,
     },
-    typeId: {
-      type: String,
-      require: true,
-    },
     province: {
       type: String,
       require: true,

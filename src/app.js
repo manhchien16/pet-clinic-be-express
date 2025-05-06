@@ -1,5 +1,6 @@
-const express = require('express');
-const setRoutes = require('./routes/index').setRoutes;
+const express = require("express");
+const { connectDB } = require("./configuration/dbConfig");
+const { routers } = require("./routes");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -9,9 +10,10 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Initialize routes
-setRoutes(app);
+connectDB();
+routers(app);
 
 // Start the server
 app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`Server is running on http://localhost:${PORT}`);
 });
