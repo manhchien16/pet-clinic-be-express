@@ -9,8 +9,8 @@ async function connectDB() {
 
   const uri = config.get("db.mongodb");
   const opts = {
-    serverSelectionTimeoutMS: 2000, // 10s  primary
-    socketTimeoutMS: 2000, // 10s inactivity
+    serverSelectionTimeoutMS: 10000, // 10s primary
+    socketTimeoutMS: 45000, // 45s inactivity
     dbName: process.env.DB_NAME,
   };
 
