@@ -1,6 +1,6 @@
-const { verifyAccessToken } = require("../utils/jwt");
-const { errorResponse } = require("../common/swapRespose");
-const User = require("../users/model/user");
+const authService = require('../auth/services');
+const { errorResponse } = require('../common/swapRespose');
+const User = require('../users/model/user');
 
 /**
  * Middleware để verify JWT token
@@ -11,30 +11,24 @@ const authenticateToken = async (req, res, next) => {
 
     // Lấy token từ header Authorization hoặc cookie
     const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith("Bearer ")) {
+    if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.substring(7);
     } else if (req.cookies && req.cookies.accessToken) {
       token = req.cookies.accessToken;
     }
 
     if (!token) {
-      return errorResponse(res, "Access token is required", 401, "NO_TOKEN");
+      return errorResponse(res, 'Access token is required', 401, 'NO_TOKEN');
     }
 
-    // Verify token
-    const decoded = verifyAccessToken(token);
+    // Verify token và lấy user
+    const user = await authService.validateUserFromToken(token);
     
-    // Tìm user từ database
-    const user = await User.findById(decoded.userId).select("+refreshToken");
-    if (!user || !user.isActive) {
-      return errorResponse(res, "User not found or inactive", 401, "USER_NOT_FOUND");
-    }
-
     // Attach user info vào request object
     req.user = user;
     next();
   } catch (error) {
-    return errorResponse(res, "Invalid or expired token", 401, "INVALID_TOKEN");
+    return errorResponse(res, error.message, 401, 'INVALID_TOKEN');
   }
 };
 
@@ -44,11 +38,11 @@ const authenticateToken = async (req, res, next) => {
 const authorizeRoles = (...roles) => {
   return (req, res, next) => {
     if (!req.user) {
-      return errorResponse(res, "Authentication required", 401, "AUTH_REQUIRED");
+      return errorResponse(res, 'Authentication required', 401, 'AUTH_REQUIRED');
     }
 
-    if (!roles.includes(req.user.roleId)) {
-      return errorResponse(res, "Access denied", 403, "ACCESS_DENIED");
+    if (!roles.includes(req.user.role)) {
+      return errorResponse(res, 'Access denied', 403, 'ACCESS_DENIED');
     }
 
     next();
@@ -63,17 +57,18 @@ const optionalAuth = async (req, res, next) => {
     let token;
 
     const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith("Bearer ")) {
+    if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.substring(7);
     } else if (req.cookies && req.cookies.accessToken) {
       token = req.cookies.accessToken;
     }
 
     if (token) {
-      const decoded = verifyAccessToken(token);
-      const user = await User.findById(decoded.userId);
-      if (user && user.isActive) {
+      try {
+        const user = await authService.validateUserFromToken(token);
         req.user = user;
+      } catch (error) {
+        // Ignore errors for optional auth
       }
     }
 

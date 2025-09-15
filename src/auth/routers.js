@@ -1,55 +1,14 @@
-const express = require("express");
-const AuthController = require("./controller");
-const { authenticateToken } = require("../middleware/auth");
-const { body } = require("express-validator");
-const { handleValidationErrors } = require("../middleware/validation");
-
-// Validation rules cho auth routes
-const registerValidation = [
-  body("name")
-    .notEmpty()
-    .withMessage("Name is required")
-    .isLength({ min: 2, max: 50 })
-    .withMessage("Name must be between 2 and 50 characters"),
-  body("email")
-    .isEmail()
-    .withMessage("Please provide a valid email")
-    .normalizeEmail(),
-  body("password")
-    .isLength({ min: 6 })
-    .withMessage("Password must be at least 6 characters long"),
-  body("phone")
-    .optional()
-    .isMobilePhone()
-    .withMessage("Please provide a valid phone number"),
-];
-
-const loginValidation = [
-  body("email")
-    .isEmail()
-    .withMessage("Please provide a valid email")
-    .normalizeEmail(),
-  body("password")
-    .notEmpty()
-    .withMessage("Password is required"),
-];
-
-const changePasswordValidation = [
-  body("currentPassword")
-    .notEmpty()
-    .withMessage("Current password is required"),
-  body("newPassword")
-    .isLength({ min: 6 })
-    .withMessage("New password must be at least 6 characters long"),
-];
-
+const express = require('express');
 const router = express.Router();
+const authController = require('./controller');
+const { authenticateToken } = require('../middleware/auth');
+const ValidationMiddleware = require('../common/middleware/ValidationMiddleware');
 
 /**
  * @swagger
  * tags:
  *   name: Authentication
- *   description: User authentication and registration endpoints
+ *   description: User authentication and account management endpoints
  */
 
 /**
@@ -59,24 +18,36 @@ const router = express.Router();
  *     RegisterRequest:
  *       type: object
  *       required:
- *         - name
+ *         - fullName
  *         - email
  *         - password
  *       properties:
- *         name:
+ *         fullName:
  *           type: string
- *           example: John Doe
+ *           example: Quoc Le
  *         email:
  *           type: string
  *           format: email
- *           example: john@example.com
+ *           example: admin@clinic.com
  *         password:
  *           type: string
- *           minLength: 6
- *           example: password123
- *         phone:
+ *           minLength: 8
+ *           pattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$'
+ *           example: 123123123
+ *         phoneNumber:
  *           type: string
- *           example: +84-90-123-4567
+ *           example: 1234567890
+ *         address:
+ *           type: string
+ *           example: Ha Noi, Viet Nam
+ *         gender:
+ *           type: string
+ *           enum: [male, female, other]
+ *           example: male
+ *         role:
+ *           type: string
+ *           enum: [user, staff, admin]
+ *           example: user
  *     LoginRequest:
  *       type: object
  *       required:
@@ -86,52 +57,29 @@ const router = express.Router();
  *         email:
  *           type: string
  *           format: email
- *           example: john@example.com
+ *           example: admin@clinic.com
  *         password:
  *           type: string
- *           example: password123
- *     ChangePasswordRequest:
+ *           example: 123123123
+ *     ForgotPasswordRequest:
  *       type: object
  *       required:
- *         - currentPassword
- *         - newPassword
+ *         - email
  *       properties:
- *         currentPassword:
- *           type: string
- *           example: oldpassword123
- *         newPassword:
- *           type: string
- *           minLength: 6
- *           example: newpassword123
- *     User:
- *       type: object
- *       properties:
- *         _id:
- *           type: string
- *           example: 64a7b5c8d1234567890abcdf
- *         name:
- *           type: string
- *           example: John Doe
  *         email:
  *           type: string
  *           format: email
- *           example: john@example.com
- *         phone:
+ *           example: admin@clinic.com
+ *     ResetPasswordRequest:
+ *       type: object
+ *       required:
+ *         - password
+ *       properties:
+ *         password:
  *           type: string
- *           example: +84-90-123-4567
- *         role:
- *           type: string
- *           enum: [admin, staff, customer]
- *           example: customer
- *         isActive:
- *           type: boolean
- *           example: true
- *         createdAt:
- *           type: string
- *           format: date-time
- *         updatedAt:
- *           type: string
- *           format: date-time
+ *           minLength: 8
+ *           pattern: '^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$'
+ *           example: 123123123
  *     AuthResponse:
  *       type: object
  *       properties:
@@ -146,6 +94,9 @@ const router = express.Router();
  *             accessToken:
  *               type: string
  *               example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *             refreshToken:
+ *               type: string
+ *               example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
  *         message:
  *           type: string
  *           example: Login successful
@@ -153,9 +104,9 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/v1/register:
+ * /api/auth/register:
  *   post:
- *     summary: Register a new user
+ *     summary: Register a new user account
  *     tags: [Authentication]
  *     requestBody:
  *       required: true
@@ -170,22 +121,20 @@ const router = express.Router();
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/AuthResponse'
- *         headers:
- *           Set-Cookie:
- *             description: Access and refresh tokens set as httpOnly cookies
- *             schema:
- *               type: string
- *               example: accessToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; HttpOnly; Secure; SameSite=Strict
  *       400:
  *         $ref: '#/components/responses/BadRequest'
  *       500:
  *         $ref: '#/components/responses/InternalError'
  */
-router.post("/register", registerValidation, handleValidationErrors, AuthController.register);
+router.post('/register', 
+  ValidationMiddleware.validateUserRegistration,
+  ValidationMiddleware.validateEmailUniqueness,
+  authController.register
+);
 
 /**
  * @swagger
- * /api/v1/login:
+ * /api/auth/login:
  *   post:
  *     summary: Login user
  *     tags: [Authentication]
@@ -202,12 +151,6 @@ router.post("/register", registerValidation, handleValidationErrors, AuthControl
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/AuthResponse'
- *         headers:
- *           Set-Cookie:
- *             description: Access and refresh tokens set as httpOnly cookies
- *             schema:
- *               type: string
- *               example: accessToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; HttpOnly; Secure; SameSite=Strict
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  *       400:
@@ -215,11 +158,156 @@ router.post("/register", registerValidation, handleValidationErrors, AuthControl
  *       500:
  *         $ref: '#/components/responses/InternalError'
  */
-router.post("/login", loginValidation, handleValidationErrors, AuthController.login);
+router.post('/login', 
+  ValidationMiddleware.validateUserLogin,
+  authController.login
+);
 
 /**
  * @swagger
- * /api/v1/refresh-token:
+ * /api/auth/logout:
+ *   post:
+ *     summary: Logout current user
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Logged out successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Logout successful
+ *       401:
+ *         $ref: '#/components/responses/Unauthorized'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+router.post('/logout', authenticateToken, authController.logout);
+
+/**
+ * @swagger
+ * /api/auth/forgot-password:
+ *   post:
+ *     summary: Request password reset
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ForgotPasswordRequest'
+ *     responses:
+ *       200:
+ *         description: Password reset token sent to email
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Password reset token sent to email
+ *       404:
+ *         $ref: '#/components/responses/NotFound'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+router.post('/forgot-password', 
+  ValidationMiddleware.validateUserLogin, // Chỉ validate email
+  authController.forgotPassword
+);
+
+/**
+ * @swagger
+ * /api/auth/reset-password/{token}:
+ *   post:
+ *     summary: Reset password using token
+ *     tags: [Authentication]
+ *     parameters:
+ *       - in: path
+ *         name: token
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Password reset token
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ResetPasswordRequest'
+ *     responses:
+ *       200:
+ *         description: Password reset successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Password reset successful
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+router.post('/reset-password/:token', 
+  ValidationMiddleware.validatePasswordChange,
+  authController.resetPassword
+);
+
+/**
+ * @swagger
+ * /api/auth/verify-email/{token}:
+ *   post:
+ *     summary: Verify email address
+ *     tags: [Authentication]
+ *     parameters:
+ *       - in: path
+ *         name: token
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Email verification token
+ *     responses:
+ *       200:
+ *         description: Email verified successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Email verified successfully
+ *       400:
+ *         $ref: '#/components/responses/BadRequest'
+ *       500:
+ *         $ref: '#/components/responses/InternalError'
+ */
+router.post('/verify-email/:token', authController.verifyEmail);
+
+/**
+ * @swagger
+ * /api/auth/refresh-token:
  *   post:
  *     summary: Refresh access token
  *     tags: [Authentication]
@@ -244,122 +332,11 @@ router.post("/login", loginValidation, handleValidationErrors, AuthController.lo
  *                 message:
  *                   type: string
  *                   example: Token refreshed successfully
- *         headers:
- *           Set-Cookie:
- *             description: New access token set as httpOnly cookie
- *             schema:
- *               type: string
- *               example: accessToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; HttpOnly; Secure; SameSite=Strict
  *       401:
  *         $ref: '#/components/responses/Unauthorized'
  *       500:
  *         $ref: '#/components/responses/InternalError'
  */
-router.post("/refresh-token", AuthController.refreshToken);
-
-/**
- * @swagger
- * /api/v1/logout:
- *   post:
- *     summary: Logout user
- *     tags: [Authentication]
- *     security:
- *       - bearerAuth: []
- *     description: Logout the current user and clear authentication cookies
- *     responses:
- *       200:
- *         description: Logged out successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: success
- *                 message:
- *                   type: string
- *                   example: Logged out successfully
- *         headers:
- *           Set-Cookie:
- *             description: Cookies cleared
- *             schema:
- *               type: string
- *               example: accessToken=; expires=Thu, 01 Jan 1970 00:00:00 GMT
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
- *       500:
- *         $ref: '#/components/responses/InternalError'
- */
-router.post("/logout", authenticateToken, AuthController.logout);
-
-/**
- * @swagger
- * /api/v1/change-password:
- *   post:
- *     summary: Change user password
- *     tags: [Authentication]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/ChangePasswordRequest'
- *     responses:
- *       200:
- *         description: Password changed successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: success
- *                 message:
- *                   type: string
- *                   example: Password changed successfully
- *       400:
- *         $ref: '#/components/responses/BadRequest'
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
- *       500:
- *         $ref: '#/components/responses/InternalError'
- */
-router.post("/change-password", authenticateToken, changePasswordValidation, handleValidationErrors, AuthController.changePassword);
-
-/**
- * @swagger
- * /api/v1/me:
- *   get:
- *     summary: Get current user information
- *     tags: [Authentication]
- *     security:
- *       - bearerAuth: []
- *     description: Get the current authenticated user's profile information
- *     responses:
- *       200:
- *         description: Current user information retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: success
- *                 data:
- *                   $ref: '#/components/schemas/User'
- *                 message:
- *                   type: string
- *                   example: Current user retrieved successfully
- *       401:
- *         $ref: '#/components/responses/Unauthorized'
- *       500:
- *         $ref: '#/components/responses/InternalError'
- */
-router.get("/me", authenticateToken, AuthController.me);
+router.post('/refresh-token', authController.refreshToken);
 
 module.exports = router;
